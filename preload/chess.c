@@ -45,7 +45,7 @@ int pthread_mutex_unlock(pthread_mutex_t *t)
 
 int pthread_join(pthread_t p, void **ret)
 {
-	printf("Joining pthread\n");
+	printf("Time to start!!!\n");
 	fflush(0);
 
 	int (*original)(pthread_t, void **);
