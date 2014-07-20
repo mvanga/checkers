@@ -19,7 +19,7 @@ int ready_counter = 0;
 int current_thread;
 pthread_mutex_t sched_mutex;
 pthread_cond_t sched_cv;
-pthread_cond_t thread_cv[MAXTHREADS];
+pthread_cond_t thread_cv;
 int active[MAXTHREADS];
 
 /* Original functions that we reuse */
@@ -28,6 +28,7 @@ int (*orig_pthread_mutex_lock)(pthread_mutex_t *);
 int (*orig_pthread_mutex_unlock)(pthread_mutex_t *);
 int (*orig_pthread_cond_wait)(pthread_cond_t *, pthread_mutex_t *);
 int (*orig_pthread_cond_signal)(pthread_cond_t *, pthread_mutex_t *);
+int (*orig_pthread_cond_broadcast)(pthread_cond_t *, pthread_mutex_t *);
 
 struct thread_params { int tid; void *(*start_routine)(void*); void *arg; };
 
@@ -57,7 +58,7 @@ void *pick_thread(void *arg) {
 		printf("SCHED: current_thread is now: %d.\n", current_thread);
 		
 		printf("SCHED: waking up thread %d. Waiting...\n", current_thread);
-		orig_pthread_cond_signal(&thread_cv[current_thread], &sched_mutex);
+		orig_pthread_cond_broadcast(&thread_cv, &sched_mutex);
 		orig_pthread_cond_wait(&sched_cv, &sched_mutex);
 
 		orig_pthread_mutex_unlock(&sched_mutex);
@@ -71,8 +72,10 @@ void thread_yield() {
 
 	printf("THREAD %d: waking up the scheduler. Waiting...\n", tid);
 	orig_pthread_cond_signal(&sched_cv, &sched_mutex);
-	orig_pthread_cond_wait(&thread_cv[tid], &sched_mutex);
-
+	do {
+		orig_pthread_cond_wait(&thread_cv, &sched_mutex);
+	} while (current_thread != tid);
+	
 	orig_pthread_mutex_unlock(&sched_mutex);
 }
 
@@ -83,7 +86,9 @@ void thread_start() {
 	ready_counter++;
 	
 	printf("THREAD %d: waiting...\n", tid);
-	orig_pthread_cond_wait(&thread_cv[tid], &sched_mutex);
+	do {
+		orig_pthread_cond_wait(&thread_cv, &sched_mutex);
+	} while (current_thread != tid);
 	orig_pthread_mutex_unlock(&sched_mutex);
 }
 
@@ -109,7 +114,7 @@ void *thread_init(void *data)
 	arg = params->arg;
 	free(params);
 
-    pthread_cond_init(&thread_cv[tid], NULL);
+    pthread_cond_init(&thread_cv, NULL);
 	
 	thread_start();
 	start_routine(arg);
@@ -131,32 +136,19 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 
 int pthread_mutex_lock(pthread_mutex_t *t)
 {
-	printf("Locking in pthread\n");
-	fflush(0);
-
-	/* Before lock is acquired, pass control to scheduler */
+	printf("THREAD %d: Waiting for lock. [%p]\n", tid, t);
 	thread_yield();
-
-	int (*original)(pthread_mutex_t *);
-	original = dlsym(RTLD_NEXT, "pthread_mutex_lock");
-	return (*original)(t);
+	printf("THREAD %d: Lock acquired. [%p]\n", tid, t);	
+	return 0;
 }
 
 int pthread_mutex_unlock(pthread_mutex_t *t)
 {
-	int ret;
-	
-	printf("Unlocking in pthread\n");
-	fflush(0);
-
-	int (*original)(pthread_mutex_t *);
-	original = dlsym(RTLD_NEXT, "pthread_mutex_unlock");
-	ret = (*original)(t);
-	
-	/* After lock is released, pass control to scheduler */
+	printf("THREAD %d: Releasing lock. [%p]\n", tid, t);
 	thread_yield();
+	printf("THREAD %d: Lock released. [%p]\n", tid, t);
 
-	return ret;
+	return 0;
 }
 
 int pthread_join(pthread_t p, void **ret)
@@ -202,6 +194,7 @@ __attribute__((constructor)) void init(void) {
 	orig_pthread_mutex_unlock = dlsym(RTLD_NEXT, "pthread_mutex_unlock");
 	orig_pthread_cond_wait = dlsym(RTLD_NEXT, "pthread_cond_wait");
 	orig_pthread_cond_signal = dlsym(RTLD_NEXT, "pthread_cond_signal");
+	orig_pthread_cond_broadcast = dlsym(RTLD_NEXT, "pthread_cond_broadcast");
 
 	if (orig_pthread_create(&scheduler, NULL, pick_thread, NULL)) {
 		printf("Can't create scheduler thread.\n");
