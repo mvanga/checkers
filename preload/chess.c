@@ -3,53 +3,102 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <dlfcn.h>
+#include <stdlib.h>
 #include <semaphore.h>
+#include <string.h>
+
+#define MAXTHREADS 1000
+
+pthread_t scheduler;
+int sched_started = 0;
 
 int num_threads;
-sem_t barrier;
-//sem_t lock[1000];
+__thread int tid;
 
-__attribute__((constructor)) void init(void) {
-	num_threads = 0;
-	if(sem_init(&barrier, 0, 0) != 0) {
-		printf("Could not initialize semaphore to 0!\n");
+int current_thread;
+pthread_mutex_t sched_mutex;
+pthread_cond_t sched_cv;
+pthread_cond_t thread_cv[MAXTHREADS];
+
+/* Original functions that we reuse */
+int (*orig_pthread_create)(pthread_t *, const pthread_attr_t *, void *(*start_routine)(void*), void *);
+int (*orig_pthread_mutex_lock)(pthread_mutex_t *);
+int (*orig_pthread_mutex_unlock)(pthread_mutex_t *);
+int (*orig_pthread_cond_wait)(pthread_cond_t *, pthread_mutex_t *);
+int (*orig_pthread_cond_signal)(pthread_cond_t *, pthread_mutex_t *);
+
+struct thread_params { int tid; void *(*start_routine)(void*); void *arg; };
+
+void *pick_thread(void *arg) {
+	/* Wait for first call of sched_yield() */
+	orig_pthread_mutex_lock(&sched_mutex);
+	printf("SCHED: pthread_cond_wait(&tsched_cv, &sched_mutex) [Waiting for thread creation].\n");
+	orig_pthread_cond_wait(&sched_cv, &sched_mutex);
+	orig_pthread_mutex_unlock(&sched_mutex);
+	
+	printf("SCHED STARTED!\n");
+	
+	while (1) {
+		orig_pthread_mutex_lock(&sched_mutex);
+		current_thread = (current_thread + 1) % num_threads;
+		
+		printf("SCHED: current_thread is now: %d.\n", current_thread);
+		
+		printf("SCHED: pthread_cond_signal(&thread_cv[%d], &sched_mutex).\n", current_thread);
+		orig_pthread_cond_signal(&thread_cv[current_thread], &sched_mutex);
+		printf("SCHED: pthread_cond_wait(&sched_cv, &sched_mutex).\n");
+		fflush(0);
+		orig_pthread_cond_wait(&sched_cv, &sched_mutex);
+
+		orig_pthread_mutex_unlock(&sched_mutex);
 	}
+	
+	return NULL;
 }
 
+void thread_yield() {
+	orig_pthread_mutex_lock(&sched_mutex);
 
-void *my_blocker(void *arg)
+	printf("THREAD %d: pthread_cond_signal(&sched_cv, &sched_mutex).\n", tid);
+	orig_pthread_cond_signal(&sched_cv, &sched_mutex);
+	printf("THREAD %d: pthread_cond_wait(&thread_cv[%d], &sched_mutex).\n", tid, tid);
+	orig_pthread_cond_wait(&thread_cv[tid], &sched_mutex);
+
+	orig_pthread_mutex_unlock(&sched_mutex);
+}
+
+void *thread_init(void *data)
 {
-	int value;
+	struct thread_params *params;
 	void *(*start_routine)(void *);
-	start_routine = arg;
+	void *arg;
+	
+	params = (struct thread_params *) data;
+	tid = params->tid;
+	start_routine = params->start_routine;
+	arg = params->arg;
+	free(params);
 
-	//printf("My Thread ID: %d\n", pthread_self());
-	printf("wheee\n");
-	if (sem_getvalue(&barrier, &value) != 0)
-		printf("Could not read semaphore!\n");
+	printf("My Thread ID: %d\n", tid);
+
+	printf("THREAD %d: pthread_cond_init(&thread_cv[%d]).\n", tid, tid);
+    pthread_cond_init(&thread_cv[tid], NULL);
 	
-	printf("Value: %d\n", value);
+	thread_yield(); /* Wait for the scheduler */
 	
-	sem_wait(&barrier);
-	
-	start_routine(NULL);
+	start_routine(arg);
 	return NULL;
 }
 
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void*), void *arg)
-{	
-	printf("Creating pthread\n");
-	fflush(0);
-
-	/*if(sem_init(&lock[num_threads], 0, 0) != 0) {
-		printf("Could not initialize semaphore to 0!\n");
-	}*/
-
+{
+	/* Pass thread data as parameters */
+	struct thread_params *params = malloc(sizeof(struct thread_params));
+	params->tid = num_threads;
+	params->start_routine = start_routine;
 	num_threads++;
 
-	int (*original)(pthread_t *, const pthread_attr_t *, void *(*start_routine)(void*), void *);
-	original = dlsym(RTLD_NEXT, "pthread_create");
-	return (*original)(thread, attr, my_blocker, start_routine);
+	return orig_pthread_create(thread, attr, thread_init, params);
 }
 
 int pthread_mutex_lock(pthread_mutex_t *t)
@@ -74,23 +123,37 @@ int pthread_mutex_unlock(pthread_mutex_t *t)
 
 int pthread_join(pthread_t p, void **ret)
 {
-	int value;
 	printf("Time to start!!!\n");
 	fflush(0);
 
-	if (sem_getvalue(&barrier, &value) != 0)
-		printf("Could not read semaphore!\n");
-	
-	printf("There are %d blocked threads. Semaphore: %d\n", num_threads, value);
-	/*sem_post(&barrier);
-	sem_getvalue(&barrier, &value);
-	printf("decreased to Value: %d\n", value);
-	if (value < 0) {
-		
+	if (!sched_started) {
+		sched_started = 1;
+		printf("START: pthread_cond_signal(&sched_cv, &sched_mutex).\n");
+		orig_pthread_cond_signal(&sched_cv, &sched_mutex);
 	}
-	sem_wait(&barrier);*/
 
 	int (*original)(pthread_t, void **);
 	original = dlsym(RTLD_NEXT, "pthread_join");
 	return (*original)(p, ret);
 }
+
+__attribute__((constructor)) void init(void) {
+	/* Initialize the library */
+	num_threads = 0;
+	current_thread = -1;
+
+    pthread_mutex_init(&sched_mutex, NULL);
+	printf("pthread_cond_init(&sched_cv).\n");
+    pthread_cond_init(&sched_cv, NULL);
+
+	orig_pthread_create = dlsym(RTLD_NEXT, "pthread_create");	
+	orig_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
+	orig_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+	orig_pthread_cond_wait = dlsym(RTLD_NEXT, "pthread_cond_wait");
+	orig_pthread_cond_signal = dlsym(RTLD_NEXT, "pthread_cond_signal");
+
+	if (orig_pthread_create(&scheduler, NULL, pick_thread, NULL)) {
+		printf("Can't create scheduler thread.\n");
+	}	
+}
+
