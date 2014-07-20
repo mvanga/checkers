@@ -24,7 +24,7 @@
 #include<stdlib.h>
 #include<unistd.h>
 
-#define MAX 1
+#define MAX 2
 
 pthread_t tid[MAX];
 int counter;
@@ -32,19 +32,18 @@ pthread_mutex_t lock;
 
 void* doSomeThing(void *arg)
 {
+	printf("\tBefore lock\n", counter);
+	
 	pthread_mutex_lock(&lock);
 
 	unsigned long i = 0;
-	counter += 1;
-	printf("\n Job %d started\n", counter);
-	fflush(0);
-
+	printf("\tInside lock\n", counter);
 	for(i=0; i<(1000000);i++);
 
-	printf("\n Job %d finished\n", counter);
-	fflush(0);
-
+	counter += 1;
 	pthread_mutex_unlock(&lock);
+
+	printf("\tAfter lock\n", counter);
 
 	return NULL;
 }
