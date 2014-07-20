@@ -14,6 +14,7 @@ int sched_started = 0;
 
 int num_threads;
 __thread int tid;
+int ready_counter = 0;
 
 int current_thread;
 pthread_mutex_t sched_mutex;
@@ -79,14 +80,25 @@ void *thread_init(void *data)
 	arg = params->arg;
 	free(params);
 
-	printf("My Thread ID: %d\n", tid);
-
-	printf("THREAD %d: pthread_cond_init(&thread_cv[%d]).\n", tid, tid);
+	printf("THREAD %d: Initializing thread_cv[%d].\n", tid, tid);
     pthread_cond_init(&thread_cv[tid], NULL);
 	
-	thread_yield(); /* Wait for the scheduler */
+
+	/* Start blocked and wait for the scheduler */
+	orig_pthread_mutex_lock(&sched_mutex);
+	ready_counter++;
 	
+	printf("THREAD %d: pthread_cond_wait(&thread_cv[%d], &sched_mutex).\n", tid, tid);
+	orig_pthread_cond_wait(&thread_cv[tid], &sched_mutex);
+	orig_pthread_mutex_unlock(&sched_mutex);
+
 	start_routine(arg);
+
+	//orig_pthread_mutex_lock(&sched_mutex);
+	//printf("THREAD %d: EXIT! Waking up the scheduler.\n", tid, tid);
+	//orig_pthread_cond_signal(&sched_cv, &sched_mutex);
+	//orig_pthread_mutex_unlock(&sched_mutex);
+	
 	return NULL;
 }
 
@@ -123,11 +135,24 @@ int pthread_mutex_unlock(pthread_mutex_t *t)
 
 int pthread_join(pthread_t p, void **ret)
 {
-	printf("Time to start!!!\n");
-	fflush(0);
-
 	if (!sched_started) {
 		sched_started = 1;
+		
+		printf("START: Waiting for %d threads.\n", num_threads);
+		
+		/* Wait for every thread to be ready */
+		while (1) {
+			orig_pthread_mutex_lock(&sched_mutex);
+			if (ready_counter < num_threads) {
+				orig_pthread_mutex_unlock(&sched_mutex);
+				sched_yield();
+			} else {
+				orig_pthread_mutex_unlock(&sched_mutex);
+				break;
+			}
+		}
+		printf("START: Threads are ready.\n");
+
 		printf("START: pthread_cond_signal(&sched_cv, &sched_mutex).\n");
 		orig_pthread_cond_signal(&sched_cv, &sched_mutex);
 	}
@@ -148,7 +173,7 @@ __attribute__((constructor)) void init(void) {
 
 	orig_pthread_create = dlsym(RTLD_NEXT, "pthread_create");	
 	orig_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
-	orig_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+	orig_pthread_mutex_unlock = dlsym(RTLD_NEXT, "pthread_mutex_unlock");
 	orig_pthread_cond_wait = dlsym(RTLD_NEXT, "pthread_cond_wait");
 	orig_pthread_cond_signal = dlsym(RTLD_NEXT, "pthread_cond_signal");
 
