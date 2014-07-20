@@ -3,7 +3,7 @@ LDFLAGS+=-lpthread
 all: chess test
 
 chess:
-	gcc -Wall -fPIC -shared -o chess.so chess.c -ldl
+	gcc -Wall -g -fPIC -shared -o chess.so chess.c -ldl
 
 test: test.o
 

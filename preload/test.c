@@ -39,7 +39,7 @@ void* doSomeThing(void *arg)
 	printf("\n Job %d started\n", counter);
 	fflush(0);
 
-	for(i=0; i<(100000000);i++);
+	for(i=0; i<(1000000);i++);
 
 	printf("\n Job %d finished\n", counter);
 	fflush(0);

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <pthread.h>
+#include <string.h>
 
 #define NUM_PROD 5
 #define NUM_CONS 5
@@ -43,14 +44,23 @@ void * consume (void *arg) {
 }
 
 void setup() {
-	int i;
+	int i, err;
 	size = 0;
 
-	for (i = 0; i < NUM_PROD; i++)
-		pthread_create(&threads[i], NULL, produce, NULL);
+	if (pthread_mutex_init(&lock, NULL) != 0)
+		printf("\n mutex init failed\n");
+	
+	for (i = 0; i < NUM_PROD; i++) {
+		err = pthread_create(&threads[i], NULL, produce, NULL);
+		if (err != 0)
+			printf("\ncan't create thread :[%s]", strerror(err));
+	}
 
-	for (i = 0; i < NUM_CONS; i++)
-		pthread_create(&threads[i+NUM_PROD], NULL, consume, NULL);
+	for (i = 0; i < NUM_CONS; i++) {
+		err = pthread_create(&threads[i+NUM_PROD], NULL, produce, NULL);
+		if (err != 0)
+			printf("\ncan't create thread :[%s]", strerror(err));
+	}
 }
 
 int run() {
