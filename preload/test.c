@@ -24,7 +24,7 @@
 #include<stdlib.h>
 #include<unistd.h>
 
-#define MAX 5
+#define MAX 1
 
 pthread_t tid[MAX];
 int counter;
