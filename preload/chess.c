@@ -18,15 +18,20 @@ struct chess_data {
 	int running;					/* Whether chess should run or not */
 	int num_threads;				/* Number of threads */
 	pthread_mutex_t global_lock;	/* Lock for global data */
-	pthread_cond_t sched_change_cv;	/* Condition variable for the scheduler */
 	pthread_t scheduler;			/* Pthread ID of main chess thread */
 	int next_thread;				/* The thread ID that should run next */
 	int last_thread;				/* The thread ID that executed last */
 	int num_active;					/* Number of active threads */
 	int active[MAXTHREADS];			/* Bitmap of active threads */
 	int sched_start;				/* Whether scheduler should start or not */
+
+	const char *mode;				/* The mode: either 'record' or 'replay' */
+	const char *file;				/* The filename to record to/replay from */
+	FILE *filefd;
+
 	pthread_cond_t sched_start_cv; 	/* Condition variable for starting */
 	pthread_cond_t all_threads_cv; 	/* All threads are ready */
+	pthread_cond_t sched_change_cv;	/* Condition variable for the scheduler */
 };
 
 /* Per-thread information */
@@ -36,25 +41,6 @@ struct thread_data {
 
 struct chess_data *chess_data;
 struct thread_data __thread thread_data;
-
-/*int __pthread_mutex_lock(pthread_mutex_t *lock)
-{
-	int ret;
-	int (*o)(pthread_mutex_t *);
-	o = dlsym(RTLD_NEXT, "pthread_mutex_lock");
-
-	ret = o(lock);
-	debug("=====>Locking %p THREAD %d.\n", lock, thread_data.tid);
-	return ret;
-}
-
-int __pthread_mutex_unlock(pthread_mutex_t *lock)
-{
-	int (*o)(pthread_mutex_t *);
-	o = dlsym(RTLD_NEXT, "pthread_mutex_unlock");
-	debug("=====>UNlocking %p THREAD %d.\n", lock, thread_data.tid);
-	return o(lock);
-}*/
 
 /* Pointers to the original pthread functions */
 int (*__pthread_create)(pthread_t *, const pthread_attr_t *, void *(*start_routine)(void*), void *);
@@ -107,9 +93,17 @@ void *chess_scheduler(void *arg)
 	debug("SCHED STARTED!\n");
 	chess_data->last_thread = -1;
 	while (chess_data->running) {
-		do {
-			chess_data->next_thread = (chess_data->last_thread + 1) % chess_data->num_threads;
-		} while (!chess_data->active[chess_data->next_thread]);
+		if (strcmp(chess_data->mode, "record") == 0) {
+			/* For record, we just use a braindead round-robin scheduler */
+			do {
+				chess_data->next_thread = (chess_data->last_thread + 1) % chess_data->num_threads;
+			} while (!chess_data->active[chess_data->next_thread]);
+			/* Write our choice into the file */
+			fprintf(chess_data->filefd, "%d\n", chess_data->next_thread);
+		} else if (strcmp(chess_data->mode, "replay") == 0) {
+			/* For replay, we read the next thread to scheduler from the file */
+			fscanf(chess_data->filefd, "%d\n", &chess_data->next_thread);
+		}
 		chess_data->last_thread = chess_data->next_thread;
 		debug("Picked %d\n", chess_data->next_thread);
 		block_and_wait_for_turn(0);
@@ -137,7 +131,7 @@ static void __attribute__((constructor)) chess_init(void)
 	chess_data = malloc(sizeof(struct chess_data));
 	if (!chess_data) {
 		debug("chess: failed to allocate global chess data\n");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	chess_data->next_thread = -1;
@@ -150,6 +144,29 @@ static void __attribute__((constructor)) chess_init(void)
     pthread_cond_init(&chess_data->sched_start_cv, NULL);
     pthread_cond_init(&chess_data->all_threads_cv, NULL);
 	memset(chess_data->active, 0, sizeof(int)*MAXTHREADS);
+	chess_data->mode = getenv("MODE");
+	chess_data->file = getenv("FILE");
+
+	if (strcmp(chess_data->mode, "record") == 0) {
+		chess_data->filefd = fopen(chess_data->file, "w");
+		if (chess_data->filefd  == NULL) {
+			debug("chess: could not open record file: %s\n", chess_data->file);
+			exit(EXIT_FAILURE);
+		}
+	} else if (strcmp(chess_data->mode, "replay") == 0) {
+		chess_data->filefd = fopen(chess_data->file, "r");
+		if (chess_data->filefd  == NULL) {
+			debug("chess: could not open replay file: %s\n", chess_data->file);
+			exit(EXIT_FAILURE);
+		}
+	} else {
+		debug("chess: unknown mode: %s\n", chess_data->mode);
+		exit(EXIT_FAILURE);
+	}
+
+
+	printf("Mode: %s\n", chess_data->mode);
+	printf("File: %s\n", chess_data->file);
 
 	/* Get pointers to the original pthread library functions */
 	__pthread_create = dlsym(RTLD_NEXT, "pthread_create");
@@ -163,7 +180,7 @@ static void __attribute__((constructor)) chess_init(void)
 	/* Create our chess scheduler thread that controls the others */
 	if (__pthread_create(&chess_data->scheduler, NULL, chess_scheduler, NULL)) {
 		debug("chess: failed to create scheduler thread\n");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 }
 
@@ -174,6 +191,7 @@ static void __attribute__((destructor)) chess_exit(void)
 
 	chess_data->running = 0;
 	__pthread_join(chess_data->scheduler, NULL);
+	fclose(chess_data->filefd);
 	free(chess_data);
 }
 
