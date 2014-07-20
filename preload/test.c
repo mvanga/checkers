@@ -32,19 +32,21 @@ pthread_mutex_t lock;
 
 void* doSomeThing(void *arg)
 {
-	printf("\tBefore lock\n", counter);
-	
+	printf("\tBefore lock\n");
+	fflush(0);
 	pthread_mutex_lock(&lock);
 
 	unsigned long i = 0;
-	printf("\tInside lock\n", counter);
+	printf("\tInside lock\n");
+	fflush(0);
 	for(i=0; i<(1000000);i++);
 
 	counter += 1;
 	pthread_mutex_unlock(&lock);
 
-	printf("\tAfter lock\n", counter);
-
+	printf("\tAfter lock\n");
+	fflush(0);
+	
 	return NULL;
 }
 

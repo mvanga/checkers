@@ -1,4 +1,5 @@
 LDFLAGS+=-lpthread
+CFLAGS += -Wall -ggdb -Wextra
 
 all: chess test
 
