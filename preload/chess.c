@@ -65,7 +65,7 @@ void block_and_wait_for_turn(int call_scheduler_next)
 		__pthread_cond_broadcast(&chess_data->sched_change_cv, &chess_data->global_lock);
 
 	while (chess_data->next_thread != thread_data.tid) {
-		debug("=====>UnLocking %p THREAD %d.\n", &chess_data->global_lock, thread_data.tid);
+		debug("=====>Unlocking %p THREAD %d.\n", &chess_data->global_lock, thread_data.tid);
 		__pthread_cond_wait(&chess_data->sched_change_cv, &chess_data->global_lock);
 		debug("=====>Locking %p THREAD %d.\n", &chess_data->global_lock, thread_data.tid);
 	}
@@ -122,8 +122,6 @@ struct thread_params {
 	void *arg;
 };
 
-//void *chess_scheduler(void *arg);
-
 /* Define a library constructor so we can initialize global stuff */
 static void __attribute__((constructor)) chess_init(void)
 {
@@ -164,10 +162,6 @@ static void __attribute__((constructor)) chess_init(void)
 		exit(EXIT_FAILURE);
 	}
 
-
-	printf("Mode: %s\n", chess_data->mode);
-	printf("File: %s\n", chess_data->file);
-
 	/* Get pointers to the original pthread library functions */
 	__pthread_create = dlsym(RTLD_NEXT, "pthread_create");
 	__pthread_join = dlsym(RTLD_NEXT, "pthread_join");
@@ -204,9 +198,7 @@ void thread_start()
 	__pthread_cond_signal(&chess_data->all_threads_cv, &chess_data->global_lock);
 
 	debug("THREAD %d: waiting...\n", thread_data.tid);
-	//debug("bla0 %d\n", thread_data.tid);
 	block_and_wait_for_turn(1);
-	//debug("bla4 %d\n", thread_data.tid);
 	__pthread_mutex_unlock(&chess_data->global_lock);
 	debug("THREAD %d: starting...\n", thread_data.tid);
 }
@@ -214,9 +206,7 @@ void thread_start()
 void thread_exit()
 {
 	/* Mark thread as inactive, so it is not scheduled anymore */
-	debug("whee\n");
 	__pthread_mutex_lock(&chess_data->global_lock);
-	debug("whee2\n");
 	chess_data->active[thread_data.tid] = 0;
 	chess_data->num_active--;
 	if (chess_data->num_active == 0)
@@ -292,19 +282,16 @@ int pthread_join(pthread_t p, void **ret)
 	thread_data.tid = 9999;
 	__pthread_mutex_lock(&chess_data->global_lock);
 	if (!chess_data->sched_start) {
-		debug("START: Waiting for %d threads to be ready. num_active: %d\n", chess_data->num_threads, chess_data->num_active);
-		
+		debug("START: Waiting for %d threads. num_active: %d\n", chess_data->num_threads, chess_data->num_active);
 		/* Wait for every thread to be ready */
 		while (chess_data->num_active < chess_data->num_threads) {
-			debug("=====>UnLocking %p THREAD %d. \n", &chess_data->global_lock, thread_data.tid);
+			debug("=====>Unlocking %p THREAD %d. \n", &chess_data->global_lock, thread_data.tid);
 			__pthread_cond_wait(&chess_data->all_threads_cv, &chess_data->global_lock);
 			debug("=====>Locking %p THREAD %d.\n", &chess_data->global_lock, thread_data.tid);
 		}
 		
 		chess_data->sched_start = 1;
-
-		debug("START: Threads are ready.\n");
-		debug("START: Waking up the scheduler.\n");
+		debug("START: Threads ready: waking scheduler \n");
 		__pthread_cond_signal(&chess_data->sched_start_cv, &chess_data->global_lock);
 	}
 	__pthread_mutex_unlock(&chess_data->global_lock);
