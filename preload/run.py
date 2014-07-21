@@ -13,12 +13,16 @@ def main():
         p.wait()
         
         with open('schedule.txt') as f:
-            l = [a.split()[0] for a in f.read().strip().split('\n')]
+            l = [a.split() for a in f.read().strip().split('\n')]
 
-        for perm in itertools.permutations(l):
-            print perm
+        perm = xrange(len(l)) # Initial permutation (identity)
+
+        for perm in itertools.permutations(perm):
+            new_l = [l[x] for x in perm]
+            print [x[0] for x in new_l]
             with open('schedule2.txt', 'w') as f:
-                f.write("\n".join(perm))
+                for line in new_l:
+                    f.write(" ".join(line) + "\n")
             p = subprocess.Popen(replay_cmd, shell=True)
             p.wait()
 
