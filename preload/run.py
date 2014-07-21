@@ -14,6 +14,14 @@ def random_permutation(perm):
 
 generator = {"random": random_permutation, "exhaustive": itertools.permutations}
 
+def min_n_fact_m(n, m):
+    prod = 1
+    for i in xrange(2, m+1):
+        if n < prod:
+            return n
+        prod *= i
+    return min(n, prod)
+
 gen = generator["random"]
 maxrounds = 1000
 
@@ -33,7 +41,7 @@ def main():
         perm = range(len(l)) # Initial permutation (identity)
 
         count = 1
-        limit = min(maxrounds, factorial(len(l)))
+        limit = min_n_fact_m(maxrounds, len(l))
         for perm in gen(perm):
             if count > limit:
                 break
