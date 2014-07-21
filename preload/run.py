@@ -53,11 +53,12 @@ def main():
             p = subprocess.Popen(replay_cmd, shell=True)
             p.wait()
             if p.returncode != 0:
-				print "Assertion failed. Bug found!!!\n"
-				p = subprocess.Popen(trace_cmd, shell=True)
-				p.wait()
-				raw_input()
-				print "\n"
+                print "Assertion failed. Bug found!!!\n"
+                p = subprocess.Popen(trace_cmd, shell=True)
+                p.wait()
+                print "--Press ENTER to continue--"
+                raw_input()
+                print "\n"
             count += 1
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 LDFLAGS += -lpthread
-CFLAGS = -Wall -Werror
+CFLAGS = -Wall -Werror -g -rdynamic
 
 SRCS = $(wildcard *.c)
 
