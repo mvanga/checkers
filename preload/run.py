@@ -8,6 +8,7 @@ def main():
         prog = sys.argv[1]
         record_cmd = "MODE=record FILE=schedule.txt LD_PRELOAD=./chess.so " + prog
         replay_cmd = "MODE=replay FILE=schedule2.txt LD_PRELOAD=./chess.so " + prog
+        trace_cmd = "python trace.py " + prog + " schedule2.txt"
 
         p = subprocess.Popen(record_cmd, shell=True)
         p.wait()
@@ -24,6 +25,8 @@ def main():
                 for line in new_l:
                     f.write(" ".join(line) + "\n")
             p = subprocess.Popen(replay_cmd, shell=True)
+            p.wait()
+            p = subprocess.Popen(trace_cmd, shell=True)
             p.wait()
 
 if __name__ == "__main__":
