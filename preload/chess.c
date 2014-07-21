@@ -10,8 +10,13 @@
 
 #define MAXTHREADS 1000
 
-//#define debug(...) do { printf(__VA_ARGS__); fflush(0); } while(0);
+#define DEBUG 0
+
+#if (DEBUG != 0)
+#define debug(...) do { printf(__VA_ARGS__); fflush(0); } while(0);
+#else
 #define debug(...)
+#endif
 
 /* Structure for global chess data */
 struct chess_data {
