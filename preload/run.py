@@ -22,7 +22,7 @@ def min_n_fact_m(n, m):
         prod *= i
     return min(n, prod)
 
-gen = generator["random"]
+gen = generator["exhaustive"]
 maxrounds = 1000
 
 def main():
@@ -52,8 +52,9 @@ def main():
                     f.write(" ".join(line) + "\n")
             p = subprocess.Popen(replay_cmd, shell=True)
             p.wait()
-            p = subprocess.Popen(trace_cmd, shell=True)
-            p.wait()
+            if p.returncode != 0:
+				p = subprocess.Popen(trace_cmd, shell=True)
+				p.wait()
             count += 1
 
 if __name__ == "__main__":

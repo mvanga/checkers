@@ -13,46 +13,63 @@ pthread_mutex_t lock;
 
 void* worker(void *arg)
 {
-	//printf("\tBefore lock\n");
-	//fflush(0);
 	pthread_mutex_lock(&lock);
 
 	unsigned long i = 0;
-	//printf("\tInside lock\n");
-	//fflush(0);
 	for(i=0; i<(1000000);i++);
-
 	counter += 1;
-	pthread_mutex_unlock(&lock);
 
-	//printf("\tAfter lock\n");
-	//fflush(0);
+	pthread_mutex_unlock(&lock);
 
 	return arg;
 }
 
-int main(void)
+int init(void)
 {
-	int i = 0;
 	int err;
+	int i = 0;
 
 	if (pthread_mutex_init(&lock, NULL) != 0) {
-		printf("\n mutex init failed\n");
+		printf("Failed to initialize mutex\n");
 		return 1;
 	}
 
 	while(i < MAX) {
 		err = pthread_create(&(tid[i]), NULL, &worker, NULL);
 		if (err != 0)
-			printf("\ncan't create thread :[%s]", strerror(err));
+			printf("Failed to create thread:[%s]", strerror(err));
 		i++;
 	}
 
-	i = 0;
+	return 0;
+}
+
+int run(void)
+{
+	int i = 0;
+
 	while (i < MAX)
 		pthread_join(tid[i++], NULL);
 
-	pthread_mutex_destroy(&lock);
+	/* Do some checks here and decide return value based on this */
 
 	return 0;
+}
+
+void deinit(void)
+{
+	pthread_mutex_destroy(&lock);
+}
+
+int main(void)
+{
+	int ret;
+
+	ret = init();
+	if (ret)
+		exit(ret);
+	ret = run();
+	deinit();
+
+	return ret;
 }
