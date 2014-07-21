@@ -1,6 +1,29 @@
 import sys
 import subprocess
 import itertools
+from random import randint
+from math import factorial
+
+def random_permutation(perm):
+    while True:
+        for i in xrange(len(perm)):
+            j = randint(0, i)
+            perm[i] = perm[j]
+            perm[j] = i
+        yield perm
+
+generator = {"random": random_permutation, "exhaustive": itertools.permutations}
+
+def min_n_fact_m(n, m):
+    prod = 1
+    for i in xrange(2, m+1):
+        if n < prod:
+            return n
+        prod *= i
+    return min(n, prod)
+
+gen = generator["random"]
+maxrounds = 1000
 
 def main():
     # parse command line options
@@ -16,11 +39,15 @@ def main():
         with open('schedule.txt') as f:
             l = [a.split() for a in f.read().strip().split('\n')]
 
-        perm = xrange(len(l)) # Initial permutation (identity)
+        perm = range(len(l)) # Initial permutation (identity)
 
-        for perm in itertools.permutations(perm):
+        count = 1
+        limit = min_n_fact_m(maxrounds, len(l))
+        for perm in gen(perm):
+            if count > limit:
+                break
             new_l = [l[x] for x in perm]
-            print [x[0] for x in new_l]
+            print count, [x[0] for x in new_l]
             with open('schedule2.txt', 'w') as f:
                 for line in new_l:
                     f.write(" ".join(line) + "\n")
@@ -28,6 +55,7 @@ def main():
             p.wait()
             p = subprocess.Popen(trace_cmd, shell=True)
             p.wait()
+            count += 1
 
 if __name__ == "__main__":
     main()

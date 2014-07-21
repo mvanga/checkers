@@ -20,7 +20,7 @@
 #define error(...) do { fprintf(stderr, __VA_ARGS__); fflush(0); } while(0);
 
 /* Structure for debugging thread state*/
-typedef enum {OP_START, OP_LOCK_ACQUIRE, OP_LOCK_RELEASE} opcode;
+typedef enum {OP_START, OP_LOCK_ACQUIRE, OP_LOCK_RELEASE, OP_EXIT} opcode;
 typedef struct {
 	void *address;	/* Address of the caller function */
 	opcode op;		/* Type of operation being performed */
@@ -137,11 +137,18 @@ void *chess_scheduler(void *arg)
 		} else if (strcmp(chess_data->mode, "replay") == 0) {
 			/* For replay, we read the next thread to scheduler from the file */
 			int dummy;
-			fscanf(chess_data->filefd, "%d %d %p %p\n",
-				   &chess_data->next_thread,
-				   &dummy,
-				   (void **) &dummy,
-				   (void **) &dummy);
+			char *buffer;
+			size_t len;
+			while(getline(&buffer, &len, chess_data->filefd) != -1) {
+				if (buffer[0] != '#') {
+					sscanf(buffer, "%d %d %p %p\n",
+							&chess_data->next_thread,
+					   		&dummy,
+					   		(void **) &dummy,
+				   			(void **) &dummy);
+					break;
+				}
+			}
 		}
 		chess_data->last_thread = chess_data->next_thread;
 		debug("Picked %d\n", chess_data->next_thread);
@@ -252,6 +259,9 @@ void thread_exit()
 	if (chess_data->num_active == 0)
 		chess_data->running = 0;
 	
+	/* Trace exit (before scheduler is called) */
+	TRACE_CALL_POS(NULL, OP_EXIT, NULL);
+
 	debug("THREAD %d: Exited. Waking up the scheduler!\n", thread_data.tid);
 	
 	/* We don't want to block, so just wake scheduler */
