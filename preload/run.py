@@ -3,7 +3,47 @@ import subprocess
 import itertools
 from random import randint
 from math import factorial
+import sys
+import subprocess
+import itertools
 
+def my_print(prog, line):
+    prefix = None
+    #if len(line) > 2:
+    #    addr = line[2]
+    #    p = subprocess.Popen('addr2line -s -f -e ' + prog + ' ' + addr, shell=True, stdout=subprocess.PIPE)
+    #    output = p.communicate()[0].split("\n")
+    #    fun = output[0]
+    #    linenumber = output[1].split(":")[1]
+    #    prefix = "===%s(),l.%s===" % (fun, linenumber)
+
+    if line[1] == '0':
+        ret = ['start', '...', 'trylock()']
+    elif line[1] == '1':
+        ret = ['lock(' + line[3] + ')', '...', 'unlock(' + line[3] + ')']
+    elif line[1] == '2':
+        ret = ['...']
+    elif line[1] == '3':
+        ret = ['EXIT']
+    
+    if prefix:
+        return [prefix] + ret
+    else:
+        return ret
+
+def get_trace(prog, fname):
+	# parse command line options
+	ret = ''
+	with open(fname) as f:
+		l = [a.split() for a in f.read().strip().split('\n')]
+
+	for line in l:
+		for x in my_print(prog, line):
+			for i in xrange(20*int(line[0])):
+				ret += ' '
+			ret += ('[' + line[0] + ']: ' if x[0] != "=" else "") + x + '\n'
+	return ret
+		
 def random_permutation(perm):
     while True:
         for i in xrange(len(perm)):
@@ -24,6 +64,7 @@ def min_n_fact_m(n, m):
 
 gen = generator["random"]
 maxrounds = 1000
+
 
 def main():
     # parse command line options
@@ -54,13 +95,12 @@ def main():
             p.wait()
             if p.returncode != 0:
                 print "Assertion failed. Bug found!!!\n"
-                p = subprocess.Popen(trace_cmd, shell=True)
-                p.wait()
-                print "Continue? (y/N): "
-                choice = raw_input()
-                if not choice: break
-                if choice not in ['y', 'Y']: break
+                print get_trace(prog, 'trace.txt')
                 print "\n"
+                print "Continue? (Y/n): ",
+                choice = raw_input()
+                if not choice: continue
+                if choice in ['n', 'N']: break
             count += 1
 
 if __name__ == "__main__":
