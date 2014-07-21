@@ -54,8 +54,11 @@ struct chess_data {
 	int sched_start;				/* Whether scheduler should start or not */
 
 	const char *mode;				/* The mode: either 'record' or 'replay' */
-	const char *file;				/* The filename to record to/replay from */
-	FILE *filefd;
+	const char *replay_file;		/* The filename to record to/replay from */
+	const char *trace_file;			/* The filename to record to/replay from */
+
+	FILE *replay_fd;
+	FILE *trace_fd;
 
 	pthread_cond_t sched_start_cv; 	/* Condition variable for starting */
 	pthread_cond_t all_threads_cv; 	/* All threads are ready */
@@ -123,44 +126,33 @@ void *chess_scheduler(void *arg)
 	debug("SCHED STARTED!\n");
 	chess_data->last_thread = -1;
 	while (chess_data->running) {
+		if (chess_data->thread_info[chess_data->last_thread].op == OP_EXIT) {
+			fprintf(chess_data->trace_fd, "%d %d\n",
+					chess_data->last_thread,
+					chess_data->thread_info[chess_data->last_thread].op);
+		}
 		if (strcmp(chess_data->mode, "record") == 0) {
 			/* For record, we just use a braindead round-robin scheduler */
-			if (chess_data->thread_info[chess_data->last_thread].op == OP_EXIT) {
-				fprintf(chess_data->filefd, "#%d %d 0 0\n",
-						chess_data->last_thread,
-						chess_data->thread_info[chess_data->last_thread].op);
-			}
 			do {
 				chess_data->next_thread = (chess_data->last_thread + 1) % chess_data->num_threads;
 			} while (!chess_data->active[chess_data->next_thread]);
 			/* Write our choice into the file */
-			fprintf(chess_data->filefd, "%d %d %p %p\n",
-					chess_data->next_thread,
-					chess_data->thread_info[chess_data->next_thread].op,
-					chess_data->thread_info[chess_data->next_thread].address,
-					chess_data->thread_info[chess_data->next_thread].extra);
+			fprintf(chess_data->replay_fd, "%d\n", chess_data->next_thread);
 		} else if (strcmp(chess_data->mode, "replay") == 0) {
 			/* For replay, we read the next thread to scheduler from the file */
-			int dummy;
-			char *buffer;
-			size_t len;
-			while(getline(&buffer, &len, chess_data->filefd) != -1) {
-				if (buffer[0] != '#') {
-					sscanf(buffer, "%d %d %p %p\n",
-							&chess_data->next_thread,
-					   		&dummy,
-					   		(void **) &dummy,
-				   			(void **) &dummy);
-					break;
-				}
-			}
+			fscanf(chess_data->replay_fd, "%d\n", &chess_data->next_thread);
 		}
+		fprintf(chess_data->trace_fd, "%d %d %p %p\n",
+				chess_data->next_thread,
+				chess_data->thread_info[chess_data->next_thread].op,
+				chess_data->thread_info[chess_data->next_thread].address,
+				chess_data->thread_info[chess_data->next_thread].extra);
 		chess_data->last_thread = chess_data->next_thread;
 		debug("Picked %d\n", chess_data->next_thread);
 		block_and_wait_for_turn(0);
 	}
 	if (chess_data->thread_info[chess_data->last_thread].op == OP_EXIT) {
-		fprintf(chess_data->filefd, "#%d %d 0 0\n",
+		fprintf(chess_data->trace_fd, "%d %d\n",
 				chess_data->last_thread,
 				chess_data->thread_info[chess_data->last_thread].op);
 	}
@@ -199,19 +191,26 @@ static void __attribute__((constructor)) chess_init(void)
     pthread_cond_init(&chess_data->all_threads_cv, NULL);
 	memset(chess_data->active, 0, sizeof(int)*MAXTHREADS);
 	chess_data->mode = getenv("MODE");
-	chess_data->file = getenv("FILE");
+	chess_data->replay_file = getenv("REPLAY_FILE");
+	chess_data->trace_file = getenv("TRACE_FILE");
 	memset(chess_data->thread_info, 0, sizeof(debug_info_t)*MAXTHREADS);
 
+	chess_data->trace_fd = fopen(chess_data->trace_file, "w");
+	if (chess_data->trace_fd  == NULL) {
+		error("chess: could not open trace file: %s\n", chess_data->trace_file);
+		exit(EXIT_FAILURE);
+	}
+
 	if (strcmp(chess_data->mode, "record") == 0) {
-		chess_data->filefd = fopen(chess_data->file, "w");
-		if (chess_data->filefd  == NULL) {
-			error("chess: could not open record file: %s\n", chess_data->file);
+		chess_data->replay_fd = fopen(chess_data->replay_file, "w");
+		if (chess_data->replay_fd  == NULL) {
+			error("chess: could not open record file: %s\n", chess_data->replay_file);
 			exit(EXIT_FAILURE);
 		}
 	} else if (strcmp(chess_data->mode, "replay") == 0) {
-		chess_data->filefd = fopen(chess_data->file, "r");
-		if (chess_data->filefd  == NULL) {
-			error("chess: could not open replay file: %s\n", chess_data->file);
+		chess_data->replay_fd = fopen(chess_data->replay_file, "r");
+		if (chess_data->replay_fd  == NULL) {
+			error("chess: could not open replay file: %s\n", chess_data->replay_file);
 			exit(EXIT_FAILURE);
 		}
 	} else {
@@ -242,7 +241,8 @@ static void __attribute__((destructor)) chess_exit(void)
 
 	chess_data->running = 0;
 	__pthread_join(chess_data->scheduler, NULL);
-	fclose(chess_data->filefd);
+	fclose(chess_data->replay_fd);
+	fclose(chess_data->trace_fd);
 	free(chess_data);
 }
 

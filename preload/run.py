@@ -29,9 +29,9 @@ def main():
     # parse command line options
     if len(sys.argv) == 2:
         prog = sys.argv[1]
-        record_cmd = "MODE=record FILE=schedule.txt LD_PRELOAD=./chess.so " + prog
-        replay_cmd = "MODE=replay FILE=schedule2.txt LD_PRELOAD=./chess.so " + prog
-        trace_cmd = "python trace.py " + prog + " schedule2.txt"
+        record_cmd = "MODE=record TRACE_FILE=trace.txt REPLAY_FILE=schedule.txt LD_PRELOAD=./chess.so " + prog
+        replay_cmd = "MODE=replay TRACE_FILE=trace.txt REPLAY_FILE=schedule.txt LD_PRELOAD=./chess.so " + prog
+        trace_cmd = "python trace.py " + prog + " trace.txt"
 
         p = subprocess.Popen(record_cmd, shell=True)
         p.wait()
@@ -40,7 +40,6 @@ def main():
             l = [a.split() for a in f.read().strip().split('\n')]
 
         perm = range(len(l)) # Initial permutation (identity)
-
         count = 1
         limit = min_n_fact_m(maxrounds, len(l))
         for perm in gen(perm):
@@ -48,7 +47,7 @@ def main():
                 break
             new_l = [l[x] for x in perm]
             print count, [x[0] for x in new_l]
-            with open('schedule2.txt', 'w') as f:
+            with open('schedule.txt', 'w') as f:
                 for line in new_l:
                     f.write(" ".join(line) + "\n")
             p = subprocess.Popen(replay_cmd, shell=True)

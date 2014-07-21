@@ -3,8 +3,6 @@ import subprocess
 import itertools
 
 def my_print(line):
-	if line[0][0] == '#':
-		line[0] = line[0][1:]
 	if line[1] == '0':
 		return ['start', '...', 'trylock()']
 	elif line[1] == '1':
