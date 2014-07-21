@@ -3,6 +3,8 @@ import subprocess
 import itertools
 
 def my_print(line):
+	if line[0][0] == '#':
+		line[0] = line[0][1:]
 	if line[1] == '0':
 		return ['start', '...', 'trylock()']
 	elif line[1] == '1':
@@ -10,7 +12,7 @@ def my_print(line):
 	elif line[1] == '2':
 		return ['...']
 	elif line[1] == '3':
-		return ['END']
+		return ['EXIT']
 
 def main():
 	# parse command line options

@@ -125,6 +125,11 @@ void *chess_scheduler(void *arg)
 	while (chess_data->running) {
 		if (strcmp(chess_data->mode, "record") == 0) {
 			/* For record, we just use a braindead round-robin scheduler */
+			if (chess_data->thread_info[chess_data->last_thread].op == OP_EXIT) {
+				fprintf(chess_data->filefd, "#%d %d 0 0\n",
+						chess_data->last_thread,
+						chess_data->thread_info[chess_data->last_thread].op);
+			}
 			do {
 				chess_data->next_thread = (chess_data->last_thread + 1) % chess_data->num_threads;
 			} while (!chess_data->active[chess_data->next_thread]);
@@ -153,6 +158,11 @@ void *chess_scheduler(void *arg)
 		chess_data->last_thread = chess_data->next_thread;
 		debug("Picked %d\n", chess_data->next_thread);
 		block_and_wait_for_turn(0);
+	}
+	if (chess_data->thread_info[chess_data->last_thread].op == OP_EXIT) {
+		fprintf(chess_data->filefd, "#%d %d 0 0\n",
+				chess_data->last_thread,
+				chess_data->thread_info[chess_data->last_thread].op);
 	}
 	__pthread_mutex_unlock(&chess_data->global_lock);
 	
