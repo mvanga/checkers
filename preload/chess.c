@@ -34,6 +34,13 @@ typedef struct {
     chess_data->thread_info[thread_data.tid].extra = (void *) b; \
   } while (0)
 
+#define TRACE_CALL_POS(pos, a, b) \
+  do { \
+    chess_data->thread_info[thread_data.tid].address = pos; \
+    chess_data->thread_info[thread_data.tid].op = a; \
+    chess_data->thread_info[thread_data.tid].extra = (void *) b; \
+  } while (0)
+
 /* Structure for global chess data */
 struct chess_data {
 	int running;					/* Whether chess should run or not */
@@ -266,7 +273,7 @@ void *thread_run(void *data)
 	free(params);
 
 	/* Trace initialization of the thread. Scheduler is not running. */
-	TRACE_CALL(OP_START, NULL); 
+	TRACE_CALL_POS(start_routine, OP_START, NULL); 
 
 	thread_start();
 	start_routine(arg);
