@@ -56,8 +56,10 @@ def main():
                 print "Assertion failed. Bug found!!!\n"
                 p = subprocess.Popen(trace_cmd, shell=True)
                 p.wait()
-                print "--Press ENTER to continue--"
-                raw_input()
+                print "Continue? (y/N): "
+                choice = raw_input()
+                if not choice: break
+                if choice not in ['y', 'Y']: break
                 print "\n"
             count += 1
 
