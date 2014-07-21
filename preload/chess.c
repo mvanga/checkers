@@ -17,6 +17,22 @@
 #else
 #define debug(...)
 #endif
+#define error(...) do { fprintf(stderr, __VA_ARGS__); fflush(0); } while(0);
+
+/* Structure for debugging thread state*/
+typedef enum {OP_START, OP_LOCK_ACQUIRE, OP_LOCK_RELEASE} opcode;
+typedef struct {
+	void *address;	/* Address of the caller function */
+	opcode op;		/* Type of operation being performed */
+	void *extra; 	/* e.g., the address of the lock being used */
+} debug_info_t;
+
+#define TRACE_CALL(a, b) \
+  do { \
+    chess_data->thread_info[thread_data.tid].address = __builtin_return_address(0); \
+    chess_data->thread_info[thread_data.tid].op = a; \
+    chess_data->thread_info[thread_data.tid].extra = (void *) b; \
+  } while (0)
 
 /* Structure for global chess data */
 struct chess_data {
@@ -37,6 +53,8 @@ struct chess_data {
 	pthread_cond_t sched_start_cv; 	/* Condition variable for starting */
 	pthread_cond_t all_threads_cv; 	/* All threads are ready */
 	pthread_cond_t sched_change_cv;	/* Condition variable for the scheduler */
+
+	debug_info_t thread_info[MAXTHREADS];	/* Holds per-thread debug info */
 };
 
 /* Per-thread information */
@@ -104,10 +122,19 @@ void *chess_scheduler(void *arg)
 				chess_data->next_thread = (chess_data->last_thread + 1) % chess_data->num_threads;
 			} while (!chess_data->active[chess_data->next_thread]);
 			/* Write our choice into the file */
-			fprintf(chess_data->filefd, "%d\n", chess_data->next_thread);
+			fprintf(chess_data->filefd, "%d %d %p %p\n",
+					chess_data->next_thread,
+					chess_data->thread_info[chess_data->next_thread].op,
+					chess_data->thread_info[chess_data->next_thread].address,
+					chess_data->thread_info[chess_data->next_thread].extra);
 		} else if (strcmp(chess_data->mode, "replay") == 0) {
 			/* For replay, we read the next thread to scheduler from the file */
-			fscanf(chess_data->filefd, "%d\n", &chess_data->next_thread);
+			int dummy;
+			fscanf(chess_data->filefd, "%d %d %p %p\n",
+				   &chess_data->next_thread,
+				   &dummy,
+				   (void **) &dummy,
+				   (void **) &dummy);
 		}
 		chess_data->last_thread = chess_data->next_thread;
 		debug("Picked %d\n", chess_data->next_thread);
@@ -149,21 +176,22 @@ static void __attribute__((constructor)) chess_init(void)
 	memset(chess_data->active, 0, sizeof(int)*MAXTHREADS);
 	chess_data->mode = getenv("MODE");
 	chess_data->file = getenv("FILE");
+	memset(chess_data->thread_info, 0, sizeof(debug_info_t)*MAXTHREADS);
 
 	if (strcmp(chess_data->mode, "record") == 0) {
 		chess_data->filefd = fopen(chess_data->file, "w");
 		if (chess_data->filefd  == NULL) {
-			debug("chess: could not open record file: %s\n", chess_data->file);
+			error("chess: could not open record file: %s\n", chess_data->file);
 			exit(EXIT_FAILURE);
 		}
 	} else if (strcmp(chess_data->mode, "replay") == 0) {
 		chess_data->filefd = fopen(chess_data->file, "r");
 		if (chess_data->filefd  == NULL) {
-			debug("chess: could not open replay file: %s\n", chess_data->file);
+			error("chess: could not open replay file: %s\n", chess_data->file);
 			exit(EXIT_FAILURE);
 		}
 	} else {
-		debug("chess: unknown mode: %s\n", chess_data->mode);
+		error("chess: unknown mode: %s\n", chess_data->mode);
 		exit(EXIT_FAILURE);
 	}
 
@@ -178,7 +206,7 @@ static void __attribute__((constructor)) chess_init(void)
 
 	/* Create our chess scheduler thread that controls the others */
 	if (__pthread_create(&chess_data->scheduler, NULL, chess_scheduler, NULL)) {
-		debug("chess: failed to create scheduler thread\n");
+		error("chess: failed to create scheduler thread\n");
 		exit(EXIT_FAILURE);
 	}
 }
@@ -237,6 +265,9 @@ void *thread_run(void *data)
 	start_routine = params->start_routine;
 	free(params);
 
+	/* Trace initialization of the thread. Scheduler is not running. */
+	TRACE_CALL(OP_START, NULL); 
+
 	thread_start();
 	start_routine(arg);
 	thread_exit();
@@ -265,6 +296,9 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
 
 int pthread_mutex_lock(pthread_mutex_t *t)
 {
+	/* Trace lock acquire (before scheduler runs) */
+	TRACE_CALL(OP_LOCK_ACQUIRE, t); 
+
 	debug("THREAD %d: Waiting for lock. [%p]\n", thread_data.tid, t);
 	block_and_wait_for_turn_locked(1);
 	debug("THREAD %d: Lock acquired. [%p]\n", thread_data.tid, t);	
@@ -274,6 +308,10 @@ int pthread_mutex_lock(pthread_mutex_t *t)
 int pthread_mutex_unlock(pthread_mutex_t *t)
 {
 	int ret;
+
+	/* Trace lock release (before scheduler runs) */
+	TRACE_CALL(OP_LOCK_RELEASE, t); 
+
 	debug("THREAD %d: Releasing lock. [%p]\n", thread_data.tid, t);
 	ret = __pthread_mutex_unlock(t);
 	debug("done\n");
