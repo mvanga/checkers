@@ -1,5 +1,5 @@
 LDFLAGS+=-lpthread
-CFLAGS += -Wall -ggdb -Wextra
+CFLAGS += -Wall -ggdb -Wextra -rdynamic
 
 all: chess test
 
