@@ -2,10 +2,10 @@
 #include <pthread.h>
 #include <string.h>
 
-#define NUM_PROD 5
-#define NUM_CONS 5
-#define MAXSIZE 1000
-#define TRIALS 100
+#define NUM_PROD 1
+#define NUM_CONS 1
+#define MAXSIZE 3
+#define TRIALS 5
 
 int buffer[MAXSIZE];
 int size;
@@ -57,7 +57,7 @@ void setup() {
 	}
 
 	for (i = 0; i < NUM_CONS; i++) {
-		err = pthread_create(&threads[i+NUM_PROD], NULL, produce, NULL);
+		err = pthread_create(&threads[i+NUM_PROD], NULL, consume, NULL);
 		if (err != 0)
 			printf("\ncan't create thread :[%s]", strerror(err));
 	}
@@ -73,8 +73,5 @@ int run() {
 
 int main() {
 	setup();
-	int ret = run();
-	printf("OK: %d\n", ret);
-	
-	return 0;
+	return !run();
 }
